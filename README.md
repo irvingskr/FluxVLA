@@ -28,18 +28,20 @@ FluxVLA Engine is a full-stack, end-to-end engineering platform for deploying em
 
 ## Performance
 
-|          Codebase           | Libero-Spatial | Libero-Object | Libero-Goal | Libero-Long | Libero-Average |
-| :-------------------------: | :------------: | :-----------: | :---------: | :---------: | :------------: |
-|       FluxVLA(GR00T)        |      96.2      |     96.8      |    93.4     |  89.4±1.5   |     93.95      |
-|         FluxVLA(Pi)         |      98.6      |     99.0      |    97.8     |   96±1.0    |     97.85      |
+| Codebase                    | Libero-Spatial | Libero-Object | Libero-Goal | Libero-Long | Libero-Average |
+| --------------------------- | :------------: | :-----------: | :---------: | :---------: | :------------: |
+| FluxVLA(GR00T)              |      96.2      |     96.8      |    93.4     |  89.4±1.5   |     93.95      |
+| FluxVLA(Pi)                 |      98.6      |     99.0      |    97.8     |   96±1.0    |     97.85      |
 | FluxVLA(Qwen3VL 0.6B+GR00T) |      98.6      |     99.6      |    95.6     |  92.2±1.8   |     96.50      |
-|     FluxVLA(DreamZero)      |      96.8      |     97.4      |  90.8±1.5   |    93.6     |     94.65      |
+| FluxVLA(DreamZero)          |      96.8      |     97.4      |  90.8±1.5   |    93.6     |     94.65      |
 
 ## 📢 Latest News
 
+**\[2026/04/22\]** 🔥 ZMQ-based remote inference framework is now supported.
+
 **\[2026/04/15\]** 🔥 DreamZero WAM is now supported.
 
-**\[2026/04/03\]** 🔥 FluxVLA has been open-sourced.
+**\[2026/04/08\]** 🔥 FluxVLA has been open-sourced.
 
 ## 🛠️ Installation
 
@@ -405,8 +407,8 @@ huggingface-cli download limxdynamics/FluxVLAEngine --include "pi05_paligemma_li
 <details>
 <summary><b>Evaluation and inference capabilities</b></summary>
 
-- Supports multi-GPU evaluation.
-- Supports evaluating libero on devices without ray tracing.
+- Supports multi-GPU evaluating libero on devices without ray tracing.
+- Supports remote inference infrastructure with ZMQ-based server/client architecture, enabling GPU-offloaded inference for resource-constrained edge devices. See [Remote Inference Serving](docs/remote_inference_serving.md).
 - Supports [RTC (Real-Time Chunking)](docs/rtc.md) to improve cross-chunk trajectory continuity.
 - Supports accelerated inference for GR00T and PI0.5; see [Inference Acceleration](docs/inference_acceleration.md), including Triton fused kernels, CUDA Graph capture, and CUDA custom operators.
 
