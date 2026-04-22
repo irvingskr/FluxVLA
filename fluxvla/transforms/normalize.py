@@ -122,6 +122,7 @@ class DenormalizeLiberoAction:
                  norm_stats: str,
                  action_dim: int = None,
                  norm_type: str = 'mean_std',
+                 stats_key: str = 'private',
                  strict: bool = False,
                  denorm_action: bool = True,
                  normalize_gripper_action: bool = True,
@@ -272,6 +273,7 @@ class DenormalizePrivateAction(DenormalizeLiberoAction):
                  norm_stats: str,
                  action_dim: int = None,
                  norm_type: str = 'mean_std',
+                 stats_key: str = 'private',
                  strict: bool = False,
                  denorm_action: bool = True,
                  normalize_gripper_action: bool = True,
@@ -284,6 +286,7 @@ class DenormalizePrivateAction(DenormalizeLiberoAction):
             self.norm_stats = norm_stats
         self.action_dim = action_dim
         self.norm_type = norm_type
+        self.stats_key = stats_key
         self.strict = strict
         self.denorm_action = denorm_action
         self.action_norm_mask = action_norm_mask
@@ -301,7 +304,7 @@ class DenormalizePrivateAction(DenormalizeLiberoAction):
                 contain keys that match the keys in `norm_stats`.
         """
         if self.norm_stats is not None and self.denorm_action:
-            norm_stats = self.norm_stats['private']
+            norm_stats = self.norm_stats[self.stats_key]
             action = data.get('action', None)[0]
             assert action is not None, \
                 f'Action is not found in the data: {data.keys()}'

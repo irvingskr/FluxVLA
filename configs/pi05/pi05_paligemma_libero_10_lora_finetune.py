@@ -118,6 +118,7 @@ model = dict(
     lora_rank=256,
     lora_alpha=512,
     lora_dropout=0.0,
+    ori_action_dim=16,
     lora_target_modules=[
         # Attention projections (llm_backbone & llm_expert)
         'q_proj',
@@ -143,7 +144,7 @@ model = dict(
     ])
 
 train_dataloader = dict(
-    per_device_batch_size=8,
+    per_device_batch_size=16,
     per_device_num_workers=4,
     dataset=dict(
         type='DistributedRepeatingDataset',
@@ -151,12 +152,12 @@ train_dataloader = dict(
             'observation.state': ['proprio'],
             'action': ['action']
         },
-        statistic_keys=['observation.state', 'timestamp', 'action'],
+        statistic_keys=['observation.state', 'action'],
         statistic_name='libero_10_no_noops',
         datasets=dict(
             type='ParquetDataset',
             data_root_path=  # noqa: E251
-            './datasets/libero_10_no_noops_lerobotv2.1',  # noqa: E501
+            './datasets/banana_lerobot',  # noqa: E501
             transforms=[
                 dict(
                     type='ProcessParquetInputs',
@@ -165,8 +166,9 @@ train_dataloader = dict(
                         'stats', 'action_masks'
                     ],
                     video_keys=[
-                        'observation.images.image',
-                        'observation.images.wrist_image',
+                        'observation.images.cam_high',
+                        'observation.images.cam_left_wrist',
+                        'observation.images.cam_right_wrist',
                     ],
                     name_mappings={
                         'observation.state': ['states'],
@@ -182,8 +184,10 @@ train_dataloader = dict(
                 dict(
                     type='NormalizeImages',
                     means=[[123.515625, 116.04492188, 103.59375],
+                           [123.515625, 116.04492188, 103.59375],
                            [123.515625, 116.04492188, 103.59375]],
                     stds=[[58.27148438, 57.02636719, 57.27539062],
+                          [58.27148438, 57.02636719, 57.27539062],
                           [58.27148438, 57.02636719, 57.27539062]],
                 ),
                 dict(
@@ -277,3 +281,121 @@ eval = dict(
         action_dim=7,
     ),
 )
+
+inference_model = model.copy()
+
+
+# Text-only inference transforms. This matches the current training setup,
+# where proprio was not injected into the PI05 prompt.
+_text_only_inference_transforms = [
+    dict(type='ParquetPrompter', use_conversation=False),
+    dict(
+        type='ProcessPrompts',
+        tokenizer=dict(type='PaligemmaTokenizer')),
+    dict(type='ResizeImages', height=224, width=224),
+    dict(
+        type='NormalizeImages',
+        means=[[123.515625, 116.04492188, 103.59375],
+               [123.515625, 116.04492188, 103.59375],
+               [123.515625, 116.04492188, 103.59375]],
+        stds=[[58.27148438, 57.02636719, 57.27539062],
+              [58.27148438, 57.02636719, 57.27539062],
+              [58.27148438, 57.02636719, 57.27539062]],
+    ),
+]
+
+# Offline validation on recorded Parquet data. This is the default inference
+# path so we can verify the checkpoint before touching a real robot.
+offline_inference = dict(
+    type='OfflineParquetInferenceRunner',
+    seed=7,
+    num_samples=32,
+    start_index=0,
+    sample_stride=20,
+    save_path='offline_inference_predictions.jsonl',
+    dataset=dict(
+        type='DistributedRepeatingDataset',
+        shuffle=False,
+        seed=7,
+        name_mappings={
+            'observation.state': ['proprio'],
+            'action': ['action']
+        },
+        statistic_keys=['observation.state', 'action'],
+        statistic_name='libero_10_no_noops',
+        datasets=dict(
+            type='ParquetDataset',
+            data_root_path='./datasets/banana_lerobot',
+            transforms=[
+                dict(
+                    type='ProcessParquetInputs',
+                    parquet_keys=[
+                        'observation.state', 'timestamp', 'actions', 'info',
+                        'stats', 'action_masks'
+                    ],
+                    video_keys=[
+                        'observation.images.cam_high',
+                        'observation.images.cam_left_wrist',
+                        'observation.images.cam_right_wrist',
+                    ],
+                    name_mappings={
+                        'observation.state': ['states'],
+                        'actions': ['actions']
+                    }),
+                *_text_only_inference_transforms,
+            ],
+            action_window_size=10,
+            action_key='action',
+            use_delta=False,
+            statistic_name='libero_10_no_noops',
+            window_start_idx=0,
+        )),
+    denormalize_action=dict(
+        type='DenormalizePrivateAction',
+        norm_type='mean_std',
+        stats_key='libero_10_no_noops',
+        action_dim=16,
+    ),
+)
+
+# Real-robot template. This keeps the ALOHA-style dual-arm ROS wiring as a
+# placeholder. It is suitable for ALOHA-compatible 7+7 or 7+7+base setups,
+# but Tron2 may still need a custom runner/operator if its action layout is 8+8.
+real_robot_inference = dict(
+    type='AlohaInferenceRunner',
+    task_descriptions={
+        '1': 'pick up the banana from the desk and place it on the plate',
+    },
+    seed=7,
+    dataset=dict(
+        type='PrivateInferenceDataset',
+        img_keys=['cam_high', 'cam_left_wrist', 'cam_right_wrist'],
+        transforms=_text_only_inference_transforms,
+    ),
+    denormalize_action=dict(
+        type='DenormalizePrivateAction',
+        norm_type='mean_std',
+        stats_key='libero_10_no_noops',
+        action_dim=16,
+    ),
+    action_chunk=10,
+    operator=dict(
+        type='AlohaOperator',
+        img_front_topic='/camera_h/color/image_raw',
+        img_left_topic='/camera_l/color/image_raw',
+        img_right_topic='/camera_r/color/image_raw',
+        img_front_depth_topic='/camera_h/depth/image_raw',
+        img_left_depth_topic='/camera_l/depth/image_raw',
+        img_right_depth_topic='/camera_r/depth/image_raw',
+        puppet_arm_left_cmd_topic='/master/joint_left',
+        puppet_arm_right_cmd_topic='/master/joint_right',
+        puppet_arm_left_topic='/puppet/joint_left',
+        puppet_arm_right_topic='/puppet/joint_right',
+        robot_base_topic='/odom_raw',
+        robot_base_cmd_topic='/cmd_vel',
+    ),
+)
+
+# Use offline inference by default. Switch this line to
+# `inference = real_robot_inference` when you are ready to try ROS.
+inference = offline_inference

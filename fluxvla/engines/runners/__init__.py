@@ -20,4 +20,6 @@ from .ddp_train_runner import DDPTrainRunner  # noqa: F401, F403
 from .fsdp_train_runner import FSDPTrainRunner  # noqa: F401, F403
 from .libero_eval_runner import LiberoEvalRunner  # noqa: F401, F403
 from .libero_inference_runner import LiberoInferenceRunner  # noqa: F401, F403
+from .offline_parquet_inference_runner import \
+    OfflineParquetInferenceRunner  # noqa: F401, F403
 from .ur_inference_runner import URInferenceRunner  # noqa: F401, F403
