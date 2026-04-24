@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ACTION_CHUNK_STEPS = 10
+
+
 model = dict(
     type='PI05FlowMatching',
     llm_backbone=dict(
@@ -65,7 +68,7 @@ model = dict(
         out_dim=2048,
     ),
     proj_width=1024,
-    n_action_steps=10,
+    n_action_steps=ACTION_CHUNK_STEPS,
     action_in_proj=dict(type='LinearProjector', in_dim=32, out_dim=1024),
     action_out_proj=dict(type='LinearProjector', in_dim=1024, out_dim=32),
     time_mlp_in=dict(type='LinearProjector', in_dim=1024, out_dim=1024),
@@ -99,8 +102,7 @@ model = dict(
         vocab_size=257152),
     freeze_llm_backbone=False,
     freeze_vision_backbone=False,
-    pretrained_name_or_path=  # noqa: E251
-    './checkpoints/pi05_libero/model.safetensors',  # noqa: E501
+    pretrained_name_or_path='./checkpoints/pi05_base',
     name_mapping={
         'llm_backbone': 'paligemma_with_expert.paligemma.model.language_model',
         'vision_backbone.vision':
@@ -174,9 +176,17 @@ train_dataloader = dict(
                         'observation.state': ['states'],
                         'actions': ['actions']
                     }),
-                dict(type='ParquetPrompter', use_conversation=False),
+                dict(
+                    type='NormalizeStatesAndActions',
+                    action_dim=32,
+                    state_dim=32,
+                    state_key='proprio',
+                    action_key='action',
+                    norm_type='mean_std'),
+                dict(type='PreparePromptWithState'),
                 dict(
                     type='ProcessPrompts',
+                    max_len=200,
                     tokenizer=dict(type='PaligemmaTokenizer'
                                    # special_tokens={'pad_token': '<PAD>'}
                                    )),
@@ -190,15 +200,8 @@ train_dataloader = dict(
                           [58.27148438, 57.02636719, 57.27539062],
                           [58.27148438, 57.02636719, 57.27539062]],
                 ),
-                dict(
-                    type='NormalizeStatesAndActions',
-                    action_dim=32,
-                    state_dim=32,
-                    state_key='proprio',
-                    action_key='action',
-                    norm_type='mean_std')
             ],
-            action_window_size=10,
+            action_window_size=ACTION_CHUNK_STEPS,
             action_key='action',
             use_delta=False,
             statistic_name='libero_10_no_noops',
@@ -239,7 +242,7 @@ eval = dict(
     type='LiberoEvalRunner',
     task_suite_name='libero_10',
     model_family='pi0',
-    eval_chunk_size=10,
+    eval_chunk_size=ACTION_CHUNK_STEPS,
     resize_size=224,
     num_trials_per_task=50,
     num_steps_wait=10,
@@ -285,12 +288,21 @@ eval = dict(
 inference_model = model.copy()
 
 
-# Text-only inference transforms. This matches the current training setup,
-# where proprio was not injected into the PI05 prompt.
-_text_only_inference_transforms = [
-    dict(type='ParquetPrompter', use_conversation=False),
+# State-aware inference transforms. PI05 without `state_proj` consumes
+# proprio through `PreparePromptWithState`, so inference must mirror
+# the training prompt construction.
+_state_aware_inference_transforms = [
+    dict(
+        type='NormalizeStatesAndActions',
+        action_dim=32,
+        state_dim=32,
+        state_key='proprio',
+        action_key='action',
+        norm_type='mean_std'),
+    dict(type='PreparePromptWithState'),
     dict(
         type='ProcessPrompts',
+        max_len=200,
         tokenizer=dict(type='PaligemmaTokenizer')),
     dict(type='ResizeImages', height=224, width=224),
     dict(
@@ -325,7 +337,7 @@ offline_inference = dict(
         statistic_name='libero_10_no_noops',
         datasets=dict(
             type='ParquetDataset',
-            data_root_path='./datasets/banana2',
+            data_root_path='./datasets/banana_lerobot',
             transforms=[
                 dict(
                     type='ProcessParquetInputs',
@@ -342,9 +354,9 @@ offline_inference = dict(
                         'observation.state': ['states'],
                         'actions': ['actions']
                     }),
-                *_text_only_inference_transforms,
+                *_state_aware_inference_transforms,
             ],
-            action_window_size=10,
+            action_window_size=ACTION_CHUNK_STEPS,
             action_key='action',
             use_delta=False,
             statistic_name='libero_10_no_noops',
@@ -380,7 +392,7 @@ real_robot_inference = dict(
         type='PrivateInferenceDataset',
         img_keys=['cam_high', 'cam_left_wrist', 'cam_right_wrist'],
         stats_key='libero_10_no_noops',
-        transforms=_text_only_inference_transforms,
+        transforms=_state_aware_inference_transforms,
     ),
     denormalize_action=dict(
         type='DenormalizePrivateAction',
@@ -388,7 +400,7 @@ real_robot_inference = dict(
         stats_key='libero_10_no_noops',
         action_dim=16,
     ),
-    action_chunk=10,
+    action_chunk=ACTION_CHUNK_STEPS,
 )
 
 # Use offline inference by default. For DACH_TRON2A real-robot deployment,
