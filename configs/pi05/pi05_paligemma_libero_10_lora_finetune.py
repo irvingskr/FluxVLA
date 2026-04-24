@@ -325,7 +325,7 @@ offline_inference = dict(
         statistic_name='libero_10_no_noops',
         datasets=dict(
             type='ParquetDataset',
-            data_root_path='./datasets/banana_lerobot',
+            data_root_path='./datasets/banana2',
             transforms=[
                 dict(
                     type='ProcessParquetInputs',
@@ -358,11 +358,20 @@ offline_inference = dict(
     ),
 )
 
-# Real-robot template. This keeps the ALOHA-style dual-arm ROS wiring as a
-# placeholder. It is suitable for ALOHA-compatible 7+7 or 7+7+base setups,
-# but Tron2 may still need a custom runner/operator if its action layout is 8+8.
+# Real-robot policy template for TRON2 upper-API deployment.
+#
+# This block is consumed by `scripts/tron2_inference.py infer` to reuse the
+# FluxVLA model/input/denormalization pipeline on DACH_TRON2A. It is not a
+# registry runner config and should not be passed to
+# `scripts/inference_real_robot.py`, because the existing ALOHA/UR runners are
+# ROS1-topic based.
 real_robot_inference = dict(
-    type='AlohaInferenceRunner',
+    robot_type='DACH_TRON2A',
+    control_interface='websocket_upper_api',
+    action_layout='left7_gripper_right7_gripper',
+    state_layout='left7_gripper_right7_gripper',
+    gripper_scale=100.0,
+    camera_names=['cam_high', 'cam_left_wrist', 'cam_right_wrist'],
     task_descriptions={
         '1': 'pick up the banana from the desk and place it on the plate',
     },
@@ -370,6 +379,7 @@ real_robot_inference = dict(
     dataset=dict(
         type='PrivateInferenceDataset',
         img_keys=['cam_high', 'cam_left_wrist', 'cam_right_wrist'],
+        stats_key='libero_10_no_noops',
         transforms=_text_only_inference_transforms,
     ),
     denormalize_action=dict(
@@ -379,23 +389,9 @@ real_robot_inference = dict(
         action_dim=16,
     ),
     action_chunk=10,
-    operator=dict(
-        type='AlohaOperator',
-        img_front_topic='/camera_h/color/image_raw',
-        img_left_topic='/camera_l/color/image_raw',
-        img_right_topic='/camera_r/color/image_raw',
-        img_front_depth_topic='/camera_h/depth/image_raw',
-        img_left_depth_topic='/camera_l/depth/image_raw',
-        img_right_depth_topic='/camera_r/depth/image_raw',
-        puppet_arm_left_cmd_topic='/master/joint_left',
-        puppet_arm_right_cmd_topic='/master/joint_right',
-        puppet_arm_left_topic='/puppet/joint_left',
-        puppet_arm_right_topic='/puppet/joint_right',
-        robot_base_topic='/odom_raw',
-        robot_base_cmd_topic='/cmd_vel',
-    ),
 )
 
-# Use offline inference by default. Switch this line to
-# `inference = real_robot_inference` when you are ready to try ROS.
+# Use offline inference by default. For DACH_TRON2A real-robot deployment,
+# keep this line unchanged and run `scripts/tron2_inference.py infer`, which
+# reads `real_robot_inference` directly without constructing a ROS runner.
 inference = offline_inference

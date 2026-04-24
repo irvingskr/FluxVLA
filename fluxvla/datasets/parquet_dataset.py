@@ -368,6 +368,7 @@ class PrivateInferenceDataset:
                  transforms: List[Dict],
                  model_path: str,
                  img_keys: List[str] = ['agentview_image'],
+                 stats_key: str = 'private',
                  center_crop: bool = False,
                  resize_size: int = 224,
                  max_len: int = 180,
@@ -384,6 +385,7 @@ class PrivateInferenceDataset:
         else:
             self.norm_stats = norm_stats
         self.img_keys = img_keys
+        self.stats_key = stats_key
         self.center_crop = center_crop
         self.resize_size = resize_size
         self.max_len = max_len
@@ -398,11 +400,21 @@ class PrivateInferenceDataset:
                 raise KeyError(
                     'Image key {!r} not found in inputs!'.format(img_key))
             imgs.append(data[img_key].transpose(2, 0, 1))  # HWC to CHW
+
+        if self.stats_key in self.norm_stats:
+            stats = self.norm_stats[self.stats_key]
+        elif len(self.norm_stats) == 1:
+            stats = next(iter(self.norm_stats.values()))
+        else:
+            raise KeyError(
+                f'Normalization stats key {self.stats_key!r} not found. '
+                f'Available keys: {sorted(self.norm_stats.keys())}')
+
         inputs = dict(
             images=imgs,
             task_description=data.get('task_description',
                                       'No task description provided'),
-            stats=self.norm_stats['private'],
+            stats=stats,
             states=data['qpos'])
         for transform in self.transforms:
             inputs = transform(inputs)
