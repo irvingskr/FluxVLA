@@ -28,18 +28,20 @@ FluxVLA Engine是面向具身智能落地应用的全链路一体化工程平台
 
 ## 性能
 
-|          Codebase           | Libero-Spatial | Libero-Object | Libero-Goal | Libero-Long | Libero-Average |
-| :-------------------------: | :------------: | :-----------: | :---------: | :---------: | :------------: |
-|       FluxVLA(GR00T)        |      96.2      |     96.8      |    93.4     |  89.4±1.5   |     93.95      |
-|         FluxVLA(Pi)         |      98.6      |     99.0      |    97.8     |   96±1.0    |     97.85      |
+| Codebase                    | Libero-Spatial | Libero-Object | Libero-Goal | Libero-Long | Libero-Average |
+| --------------------------- | :------------: | :-----------: | :---------: | :---------: | :------------: |
+| FluxVLA(GR00T)              |      96.2      |     96.8      |    93.4     |  89.4±1.5   |     93.95      |
+| FluxVLA(Pi)                 |      98.6      |     99.0      |    97.8     |   96±1.0    |     97.85      |
 | FluxVLA(Qwen3VL 0.6B+GR00T) |      98.6      |     99.6      |    95.6     |  92.2±1.8   |     96.50      |
-|     FluxVLA(DreamZero)      |      96.8      |     97.4      |  90.8±1.5   |    93.6     |     94.65      |
+| FluxVLA(DreamZero)          |      96.8      |     97.4      |  90.8±1.5   |    93.6     |     94.65      |
 
 ## 📢 最新动态
 
+**\[2026/04/22\]** 🔥 现已支持基于 ZMQ 的远程推理框架。
+
 **\[2026/04/15\]** 🔥 现已支持世界动作模型 DreamZero。
 
-**\[2026/04/03\]** 🔥 FluxVLA开源了。
+**\[2026/04/08\]** 🔥 FluxVLA开源了。
 
 ## 🛠️ 安装
 
@@ -405,8 +407,8 @@ huggingface-cli download limxdynamics/FluxVLAEngine --include "pi05_paligemma_li
 <details>
 <summary><b>评估与推理能力</b></summary>
 
-- 支持多 GPU 评估。
-- 支持在无光追设备上评估 libero。
+- 支持多 GPU 在无光追设备上评估 libero。
+- 支持基于 ZMQ 通信框架的远程推理设施，利用 server/client 架构将模型推理负载装卸到服务器端，适用于算力受限的边缘设备部署。详见 [远程推理服务](docs/remote_inference_serving.md)。
 - 支持 [RTC (Real-Time Chunking)](docs/rtc.md)，提升跨 chunk 轨迹连续性。
 - 支持 GR00T 与 PI0.5 推理加速；详见 [Inference Acceleration](docs/inference_acceleration.md)，包含 Triton 融合核、CUDA Graph 捕获与 CUDA 自定义算子。
 
