@@ -367,11 +367,13 @@ class NormalizeStatesAndActions:
     def __call__(self, data: Dict) -> Dict:
         assert 'stats' in data, "Input data must contain 'stats' key"
         state_stats = data['stats'][self.state_key]
-        action_stats = data['stats'][self.action_key]
+        has_actions = 'actions' in data and data['actions'] is not None
+        action_stats = data['stats'][self.action_key] if has_actions else None
+        actions = None
 
         if self.norm_type == 'quantile':
             states = self._normalize_quantile(data['states'], state_stats)
-            if 'actions' in data:
+            if has_actions:
                 actions = self._normalize_quantile(data['actions'],
                                                    action_stats,
                                                    self.action_norm_mask)
@@ -379,7 +381,7 @@ class NormalizeStatesAndActions:
             data['states'] = states
         elif self.norm_type == 'min_max':
             states = self._normalize_min_max(data['states'], state_stats)
-            if 'actions' in data:
+            if has_actions:
                 actions = self._normalize_min_max(data['actions'],
                                                   action_stats,
                                                   self.action_norm_mask)
@@ -387,7 +389,7 @@ class NormalizeStatesAndActions:
             data['states'] = states
         else:  # norm_type == 'mean_std'
             states = self._normalize(data['states'], state_stats)
-            if 'actions' in data:
+            if has_actions:
                 actions = self._normalize(data['actions'], action_stats,
                                           self.action_norm_mask)
                 data['actions'] = actions
@@ -395,7 +397,7 @@ class NormalizeStatesAndActions:
         if self.state_dim is not None:
             data['states'] = np.zeros((self.state_dim))
             data['states'][:states.shape[0]] = states
-        if self.action_dim is not None:
+        if self.action_dim is not None and has_actions:
             data['actions'] = np.zeros(
                 (data['actions'].shape[0], self.action_dim))
             data['actions'][:, :actions.shape[-1]] = actions

@@ -16,12 +16,19 @@ logging.basicConfig(
 def build_robot_config(args: argparse.Namespace) -> RobotConfig:
     from fluxvla.engines.operators.tron2_types import RobotConfig
 
+    control_rate = getattr(args, 'control_rate', 30)
+    if control_rate <= 0:
+        raise ValueError(f'control_rate must be positive, got {control_rate}')
+    execution_time = getattr(args, 'execution_time', None)
+    if execution_time is None:
+        execution_time = 1.0 / float(control_rate)
+
     return RobotConfig(
         ip_address=args.ip,
         accid=args.accid,
-        control_rate=getattr(args, 'control_rate', 30),
+        control_rate=control_rate,
         control_horizon=getattr(args, 'horizon', 10),
-        execution_time=getattr(args, 'execution_time', 0.07),
+        execution_time=execution_time,
         gripper_scale=getattr(args, 'gripper_scale', 100.0),
         head_camera_serial=getattr(args, 'head_camera_serial', '343622300603'),
         left_wrist_camera_serial=getattr(args, 'left_wrist_camera_serial',
@@ -51,6 +58,10 @@ def build_runner(args: argparse.Namespace):
         robot_config=robot_config,
         camera_provider='dummy' if args.dummy_images else 'realsense',
         action_chunk=int(inference_cfg.get('action_chunk', args.horizon)),
+        action_start_index=int(
+            args.action_start_index
+            if args.action_start_index is not None else inference_cfg.get(
+                'action_start_index', 0)),
         camera_names=list(
             inference_cfg.get('camera_names',
                               ['cam_high', 'cam_left_wrist',
@@ -144,11 +155,20 @@ def parse_args() -> argparse.Namespace:
         default='1',
         help='Task id from config.task_descriptions, or a raw instruction')
     infer.add_argument('--num-chunks', type=int, default=100)
-    infer.add_argument('--horizon', type=int, default=10)
-    infer.add_argument('--control-rate', type=int, default=30)
-    infer.add_argument('--execution-time', type=float, default=0.2)
+    infer.add_argument('--horizon', type=int, default=50)
+    infer.add_argument(
+        '--action-start-index',
+        type=int,
+        default=None,
+        help='Skip this many predicted actions before executing a chunk.')
+    infer.add_argument('--control-rate', type=int, default=10)
+    infer.add_argument(
+        '--execution-time',
+        type=float,
+        default=None,
+        help='MoveJ time/sleep per policy action. Defaults to 1/control-rate.')
     infer.add_argument('--gripper-scale', type=float, default=100.0)
-    infer.add_argument('--head-camera-serial', default='338122302365')
+    infer.add_argument('--head-camera-serial', default='339522301203')
     infer.add_argument('--left-wrist-camera-serial', default='260422271874')
     infer.add_argument('--right-wrist-camera-serial', default='230322270243')
     infer.add_argument('--dtype', default='bf16')

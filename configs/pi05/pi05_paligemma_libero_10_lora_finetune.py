@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ACTION_CHUNK_STEPS = 10
+ACTION_CHUNK_STEPS = 50
 
 
 model = dict(
@@ -337,7 +337,7 @@ offline_inference = dict(
         statistic_name='libero_10_no_noops',
         datasets=dict(
             type='ParquetDataset',
-            data_root_path='./datasets/banana_lerobot',
+            data_root_path='./datasets/banana2',
             transforms=[
                 dict(
                     type='ProcessParquetInputs',
@@ -385,7 +385,7 @@ real_robot_inference = dict(
     gripper_scale=100.0,
     camera_names=['cam_high', 'cam_left_wrist', 'cam_right_wrist'],
     task_descriptions={
-        '1': 'pick up the banana from the desk and place it on the plate',
+        '1': 'Pick up the banana from the desk and place it on the plate',
     },
     seed=7,
     dataset=dict(
@@ -401,6 +401,10 @@ real_robot_inference = dict(
         action_dim=16,
     ),
     action_chunk=ACTION_CHUNK_STEPS,
+    # Training uses window_start_idx=0, so action[0] is the current-step
+    # command and tends to pull closed-loop execution back toward the present.
+    # Start from the first future action on the real robot.
+    action_start_index=1,
 )
 
 # Use offline inference by default. For DACH_TRON2A real-robot deployment,

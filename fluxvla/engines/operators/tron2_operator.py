@@ -203,12 +203,22 @@ class Tron2Operator:
         if actions.ndim != 2:
             raise ValueError(f'Policy actions must have shape (T, D), got '
                              f'{actions.shape}')
+        if actions.shape[1] != self.config.policy_action_dim:
+            raise ValueError(
+                f'Policy actions must have dim {self.config.policy_action_dim} '
+                f'for TRON2, got {actions.shape}')
         if max_steps is not None:
             actions = actions[:max_steps]
 
         joint_trajectory, gripper_values = layout.split(actions)
         gripper_trajectory = np.clip(
             gripper_values * self.config.gripper_scale, 0.0, 100.0)
+        if actions.shape[0] > 0:
+            logger.info('Executing TRON2 action chunk shape=%s first_joints=%s '
+                        'first_grippers=%s',
+                        actions.shape,
+                        joint_trajectory[0].tolist(),
+                        gripper_trajectory[0].tolist())
 
         for joints, grippers in zip(joint_trajectory, gripper_trajectory):
             if self.config.enforce_joint_limits:

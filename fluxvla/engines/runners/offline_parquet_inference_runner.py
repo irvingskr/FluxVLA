@@ -156,6 +156,8 @@ class OfflineParquetInferenceRunner:
 
                 pred_action = self.denormalize_action(
                     dict(action=raw_action.float().cpu().numpy()))
+                gt_action = self.denormalize_action(
+                    dict(action=np.asarray(sample['actions'])[None]))
 
                 action_masks = sample.get('action_masks')
                 if action_masks is None:
@@ -164,8 +166,11 @@ class OfflineParquetInferenceRunner:
                     valid_steps = int(np.asarray(action_masks).sum())
                     valid_steps = max(valid_steps, 1)
 
-                gt_actions = np.asarray(sample['actions'])[:valid_steps]
                 pred_actions = np.asarray(pred_action)[:valid_steps]
+                gt_actions = np.asarray(gt_action)[:valid_steps]
+                action_dim = min(pred_actions.shape[-1], gt_actions.shape[-1])
+                pred_actions = pred_actions[..., :action_dim]
+                gt_actions = gt_actions[..., :action_dim]
                 mse = float(np.mean((pred_actions - gt_actions)**2))
 
                 record = {

@@ -53,6 +53,7 @@ class Tron2InferenceRunner(BaseInferenceRunner):
                  camera_names: Optional[list[str]] = None,
                  operator: Optional[Dict[str, Any]] = None,
                  task_descriptions: Optional[Dict[str, str]] = None,
+                 action_start_index: int = 0,
                  mixed_precision_dtype: str = 'bf16',
                  enable_mixed_precision: bool = True,
                  **kwargs):
@@ -60,6 +61,15 @@ class Tron2InferenceRunner(BaseInferenceRunner):
         self.action_layout = action_layout or ActionLayout()
         self._camera_provider_spec = camera_provider
         self.camera_provider: Optional[CameraProvider] = None
+        self.policy_action_dim = int(
+            denormalize_action.get('action_dim',
+                                   self.robot_config.policy_action_dim))
+        self.action_start_index = int(action_start_index)
+        if self.action_start_index < 0:
+            raise ValueError('action_start_index must be non-negative')
+        self._logged_input_shapes = False
+        self._logged_action_shapes = False
+        self._logged_action_chunk_warning = False
 
         if operator is None:
             operator = {
@@ -128,12 +138,12 @@ class Tron2InferenceRunner(BaseInferenceRunner):
 
     def update_observation_window(self) -> Dict:
         joint_state, gripper_state, images = self.get_ros_observation()
-        arm_q = np.asarray(joint_state['q'][:self.robot_config.arm_joint_dim],
-                           dtype=np.float32)
+        joint_q = np.asarray(joint_state['q'], dtype=np.float32)
+        arm_q = joint_q[:self.robot_config.arm_joint_dim]
         if arm_q.shape[0] != self.robot_config.arm_joint_dim:
             raise RuntimeError(
                 f'Expected at least {self.robot_config.arm_joint_dim} arm '
-                f'joints, got {arm_q}')
+                f'joints, got {joint_q.shape}')
 
         left_gripper = float(gripper_state.get('left_opening', 100.0))
         right_gripper = float(gripper_state.get('right_opening', 100.0))
@@ -143,12 +153,61 @@ class Tron2InferenceRunner(BaseInferenceRunner):
             left_gripper / self.robot_config.gripper_scale,
             right_gripper / self.robot_config.gripper_scale,
         )
+        if qpos.shape != (self.policy_action_dim,):
+            raise RuntimeError(
+                f'Expected policy state dim {self.policy_action_dim}, '
+                f'got {qpos.shape}')
+        if not self._logged_input_shapes:
+            logger.info('TRON2 policy input state shape=%s first=%s',
+                        qpos.shape, qpos.tolist())
+            self._logged_input_shapes = True
         return {'qpos': qpos, **images}
 
     def _postprocess_actions(self, raw_action):
+        raw_action_np = raw_action.float().cpu().numpy()
         denormalized = self.denormalize_action(
-            dict(action=raw_action.float().cpu().numpy()))
-        return np.asarray(denormalized[:self.action_chunk], dtype=float)
+            dict(action=raw_action_np))
+        actions = np.asarray(denormalized, dtype=float)
+        if actions.ndim == 1:
+            actions = actions[None, :]
+        if actions.shape[-1] < self.policy_action_dim:
+            raise RuntimeError(
+                f'Denormalized policy action dim must be at least '
+                f'{self.policy_action_dim}, got {actions.shape}')
+        if self.action_start_index >= actions.shape[0]:
+            raise RuntimeError(
+                f'action_start_index={self.action_start_index} is outside '
+                f'the predicted action chunk with {actions.shape[0]} steps')
+        end_index = min(self.action_start_index + self.action_chunk,
+                        actions.shape[0])
+        actions = actions[self.action_start_index:end_index,
+                          :self.policy_action_dim]
+        if not np.isfinite(actions).all():
+            raise RuntimeError('Policy predicted non-finite TRON2 actions')
+        if (actions.shape[0] < self.action_chunk
+                and not self._logged_action_chunk_warning):
+            logger.warning(
+                'Requested action_chunk=%d from action_start_index=%d, but '
+                'the model only predicted %d steps; executing %d steps. '
+                'Changing runtime horizon cannot exceed model n_action_steps.',
+                self.action_chunk,
+                self.action_start_index,
+                np.asarray(denormalized).shape[0],
+                actions.shape[0],
+            )
+            self._logged_action_chunk_warning = True
+        if not self._logged_action_shapes:
+            logger.info(
+                'TRON2 policy action raw_shape=%s denorm_shape=%s '
+                'start_index=%d sent_shape=%s first=%s',
+                raw_action_np.shape,
+                np.asarray(denormalized).shape,
+                self.action_start_index,
+                actions.shape,
+                actions[0].tolist(),
+            )
+            self._logged_action_shapes = True
+        return actions
 
     def predict_actions(self, instruction: str) -> np.ndarray:
         inputs = self._preprocess(instruction)
@@ -174,8 +233,18 @@ class Tron2InferenceRunner(BaseInferenceRunner):
                    dry_run: bool = False):
         for episode_step in range(num_chunks):
             actions = self.predict_actions(instruction)
-            logger.info('Chunk %d predicted actions shape=%s first=%s',
-                        episode_step, actions.shape, actions[0].tolist())
+            joint_actions, _ = self.action_layout.split(actions)
+            arm_delta = float(np.linalg.norm(joint_actions[-1] -
+                                             joint_actions[0]))
+            logger.info(
+                'Chunk %d predicted actions shape=%s first=%s last=%s '
+                'arm_delta=%.6f',
+                episode_step,
+                actions.shape,
+                actions[0].tolist(),
+                actions[-1].tolist(),
+                arm_delta,
+            )
             if dry_run:
                 continue
             max_steps = min(horizon or actions.shape[0], actions.shape[0])
